@@ -1,0 +1,122 @@
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/searchRoot"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="?android:attr/windowBackground"
+    android:orientation="vertical"
+    android:padding="16dp" >
+
+    <!-- Title -->
+
+    <TextView
+        android:id="@+id/searchTitle"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingBottom="12dp"
+        android:text="Search"
+        android:textSize="20sp"
+        android:textStyle="bold" />
+
+    <!-- Filter chips row (simple buttons styled as chips) -->
+
+    <LinearLayout
+        android:id="@+id/filterRow"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="12dp"
+        android:gravity="start"
+        android:orientation="horizontal" >
+
+        <ToggleButton
+            android:id="@+id/btnImages"
+            style="?android:attr/borderlessButtonStyle"
+            android:layout_width="wrap_content"
+            android:layout_height="40dp"
+            android:checked="true"
+            android:paddingLeft="12dp"
+            android:paddingRight="12dp"
+            android:textOff="Images"
+            android:textOn="Images" />
+
+        <Space
+            android:layout_width="8dp"
+            android:layout_height="1dp" />
+
+        <ToggleButton
+            android:id="@+id/btnVideos"
+            style="?android:attr/borderlessButtonStyle"
+            android:layout_width="wrap_content"
+            android:layout_height="40dp"
+            android:checked="false"
+            android:paddingLeft="12dp"
+            android:paddingRight="12dp"
+            android:textOff="Videos"
+            android:textOn="Videos" />
+
+        <Space
+            android:layout_width="8dp"
+            android:layout_height="1dp" />
+
+        <ToggleButton
+            android:id="@+id/btnGifs"
+            style="?android:attr/borderlessButtonStyle"
+            android:layout_width="wrap_content"
+            android:layout_height="40dp"
+            android:checked="false"
+            android:paddingLeft="12dp"
+            android:paddingRight="12dp"
+            android:textOff="GIFs"
+            android:textOn="GIFs" />
+    </LinearLayout>
+
+    <!-- Search box with clear icon -->
+
+    <RelativeLayout
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:layout_marginBottom="12dp" >
+
+        <EditText
+            android:id="@+id/searchInput"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:hint="Search filename or extension (e.g. .jpg .mp4)"
+            android:imeOptions="actionSearch"
+            android:inputType="text"
+            android:paddingLeft="12dp"
+            android:paddingRight="44dp"
+            android:singleLine="true" />
+
+        <ImageButton
+            android:id="@+id/btnClearSearch"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:layout_alignParentRight="true"
+            android:layout_centerVertical="true"
+            android:layout_marginRight="4dp"
+            android:background="?android:attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Clear"
+            android:src="@android:drawable/ic_menu_close_clear_cancel" />
+    </RelativeLayout>
+
+    <!-- Reset / All button -->
+
+    <Button
+        android:id="@+id/btnReset"
+        android:layout_width="wrap_content"
+        android:layout_height="40dp"
+        android:layout_marginBottom="8dp"
+        android:text="All" />
+
+    <!-- Small helper text -->
+
+    <TextView
+        android:id="@+id/searchHint"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingTop="8dp"
+        android:text="Tip: type extensions with or without dot, e.g. jpg or .mp4"
+        android:textColor="#666"
+        android:textSize="12sp" />
+
+</LinearLayout>

@@ -1,0 +1,40 @@
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/photoContainer"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="?attr/selectableItemBackground"
+    android:orientation="horizontal"
+    android:padding="12dp" >
+
+    <ImageView
+        android:id="@+id/photoThumbnail"
+        android:layout_width="80dp"
+        android:layout_height="80dp"
+        android:background="#DDDDDD"
+        android:scaleType="centerCrop" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginLeft="12dp"
+        android:layout_marginStart="12dp"
+        android:orientation="vertical" >
+
+        <TextView
+            android:id="@+id/photoTitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Photo Name"
+            android:textSize="16sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/photoDetails"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Date • Size"
+            android:textColor="#777777"
+            android:textSize="14sp" />
+    </LinearLayout>
+
+</LinearLayout>
