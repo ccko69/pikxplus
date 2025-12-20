@@ -86,6 +86,7 @@ import androidx.fragment.app.FragmentActivity;
 import java.lang.ref.WeakReference;
 import java.util.concurrent.TimeUnit;
 import com.ccko.pikxplus.features.GestureAndSlideShow;
+import com.ccko.pikxplus.features.GestureAndSlideShow;
 
 public class ViewerFragment extends Fragment {
 
@@ -111,7 +112,7 @@ public class ViewerFragment extends Fragment {
 	private float scaleFactor = 1.0f;
 	private Matrix imageMatrix = new Matrix();
 
-	private GestureAndSlideShow gestureAndSlideShow;
+	private GestureAndSlideShow.ImageViewerGestureHandler gestureHandler;
 	private boolean isSlideShowRunning = false;
 
 	private float fitScale = 1.0f; // Base fit scale (computed per image)
@@ -147,32 +148,6 @@ public class ViewerFragment extends Fragment {
 	public View onCreateView(@NonNull LayoutInflater inflater, @Nullable ViewGroup container,
 			@Nullable Bundle savedInstanceState) {
 
-		//  modern edge-to-edge API
-		Window window = requireActivity().getWindow();
-		WindowCompat.setDecorFitsSystemWindows(window, false);
-
-		// 2) Allow layout into the display cutout (API 28+)
-		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-			WindowManager.LayoutParams lp = window.getAttributes();
-			lp.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES;
-			window.setAttributes(lp);
-		}
-
-		// 3) Make status/navigation bars transparent (optional)
-		window.setStatusBarColor(Color.TRANSPARENT);
-		window.setNavigationBarColor(Color.TRANSPARENT);
-
-		// 4) Hide bars in an immersive way (use compat controller)
-		WindowInsetsControllerCompat insetsController = new WindowInsetsControllerCompat(window, window.getDecorView());
-		insetsController.hide(WindowInsetsCompat.Type.statusBars() | WindowInsetsCompat.Type.navigationBars());
-		insetsController.setSystemBarsBehavior(WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
-
-		// 5) Fallback for older devices (optional)
-		window.getDecorView()
-				.setSystemUiVisibility(View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-						| View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_FULLSCREEN
-						| View.SYSTEM_UI_FLAG_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
-
 		rootView = inflater.inflate(R.layout.fragment_viewer, container, false);
 		// Initialize views
 		imageView = rootView.findViewById(R.id.imageView);
@@ -186,159 +161,134 @@ public class ViewerFragment extends Fragment {
 		menuButton = rootView.findViewById(R.id.menuButton);
 
 		// gesture and slideshow wiring
-		gestureAndSlideShow = new GestureAndSlideShow(requireContext(), new GestureAndSlideShow.HostCallback() {
-
-			/** @Override
-			public void onSingleTap() {
-				toggleUiVisibility();
-			}
-			**/
-
-			@Override
-			public void onDoubleTap(float x, float y) {
-				imageView.post(() -> {
-					if (scaleFactor > 1.1f) {
-						// Reset to fit (computeInitialMatrix should already be valid)
-						Matrix target = computeInitialMatrix(imageView);
-						// clamp just in case
-						clampMatrixForMatrix(target);
-						animateToMatrix(target, 1.0f);
-					} else {
-						// Build target matrix by scaling around tap point
-						Matrix targetMatrix = new Matrix(imageMatrix);
-						float zoom = 2f;
-						targetMatrix.postScale(zoom, zoom, x, y);
-
-						// Update the target scale value you pass to animateToMatrix
-						float targetScale = scaleFactor * zoom;
-
-						// Clamp the target matrix so it won't animate to an out-of-bounds position
-						clampMatrixForMatrix(targetMatrix);
-
-						// Animate to the clamped matrix
-						animateToMatrix(targetMatrix, targetScale);
-					}
-				});
-			}
-
-			@Override
-			public void onSlideShowNext() {
-				// called by helper's SlideShow tick
-				showNextImageWithFade(); // keep this method in ViewerFragment
-			}
-
-			@Override
-			public void onSlideShowStopped() {
-				// restore UI when slideshow ends
-				showUiElements();
-				isSlideShowRunning = false; // if you still use this flag in fragment
-			}
-
-			@Override
-			public void onLongPress() {
-				// hide UI and stop slideshow if running
-				toggleUiVisibility();
-				if (isSlideShowRunning) {
-					stopSlideShow();
-				}
-			}
-
-			@Override
-			public void onPan(float distanceX, float distanceY) {
-				// Only pan when zoomed in
-				imageView.post(() -> {
-					if (scaleFactor > 1.01f) {
-						imageMatrix.postTranslate(-distanceX, -distanceY);
-						clampMatrix();
-						imageView.setImageMatrix(imageMatrix);
-					}
-				});
-			}
-
-			@Override
-			public void onScale(float scaleDelta, float focusX, float focusY) {
-				// apply continuous pinch scaling
-				imageView.post(() -> {
-					float newScale = scaleFactor * scaleDelta;
-					newScale = Math.max(minTempScale, Math.min(newScale, 30.0f));
-					if (newScale != scaleFactor) {
-						// compute delta to apply to matrix
-						float appliedDelta = newScale / scaleFactor;
-						scaleFactor = newScale;
-						imageMatrix.postScale(appliedDelta, appliedDelta, focusX, focusY);
-						clampMatrix();
-						imageView.setImageMatrix(imageMatrix);
-					}
-				});
-			}
-
-			@Override
-			public void onScaleEnd() {
-				imageView.post(() -> {
-					if (scaleFactor < 1.0f) {
-						animateScaleTo(1.0f);
-					}
-				});
-			}
-
-			@Override
-			public void onRequestClose() {
-				// Run on UI thread
-				imageView.post(() -> {
-					// If the image is currently scaling/panning or zoomed in, do NOT close.
-					// Use a small tolerance so tiny floating point differences don't block closing.
-					final float ZOOM_CLOSE_THRESHOLD = 1.02f; // allow tiny floating drift
-					boolean currentlyScalingOrPanning = gestureAndSlideShow != null
-							&& (gestureAndSlideShow.isScaling || gestureAndSlideShow.isPanning);
-					boolean zoomedIn = scaleFactor > ZOOM_CLOSE_THRESHOLD;
-
-					if (currentlyScalingOrPanning || zoomedIn) {
-						// Animate back to original position (cancel close) and give a subtle feedback
-						imageView.animate().translationY(0).setDuration(180).start();
-						// Optionally show a small hint to the user
-						// Toast.makeText(getContext(), "Finish zoom/pan to close", Toast.LENGTH_SHORT).show();
-						return;
+		// CHANGED: Initialize the new gesture handler
+		gestureHandler = new GestureAndSlideShow.ImageViewerGestureHandler(requireContext(),
+				new GestureAndSlideShow.ImageViewerGestureHandler.HostCallback() {
+					@Override
+					public void onDoubleTap(float x, float y) {
+						imageView.post(() -> {
+							if (scaleFactor > 1.1f) {
+								Matrix target = computeInitialMatrix(imageView);
+								clampMatrixForMatrix(target);
+								animateToMatrix(target, 1.0f);
+							} else {
+								Matrix targetMatrix = new Matrix(imageMatrix);
+								float zoom = 2f;
+								targetMatrix.postScale(zoom, zoom, x, y);
+								float targetScale = scaleFactor * zoom;
+								clampMatrixForMatrix(targetMatrix);
+								animateToMatrix(targetMatrix, targetScale);
+							}
+						});
 					}
 
-					// Otherwise perform the close animation
-					imageView.animate().translationY(imageView.getHeight()).setDuration(250).withEndAction(() -> {
-						if (getActivity() != null)
-							getActivity().onBackPressed();
-					}).start();
-				});
-			}
-
-			@Override
-			public void onNextImageRequested() {
-				imageView.post(() -> {
-					if (imageUris == null || imageUris.isEmpty())
-						return;
-					if (currentIndex < imageUris.size() - 1) {
-						// animate left-to-right transition then load next
-						imageView.animate().translationX(-imageView.getWidth()).setDuration(300).withEndAction(() -> {
-							loadImageAtIndex(currentIndex + 1);
-							imageView.setTranslationX(imageView.getWidth());
-							imageView.animate().translationX(0).setDuration(300).start();
-						}).start();
+					@Override
+					public void onSlideShowNext() {
+						showNextImageWithFade();
 					}
-				});
-			}
 
-			@Override
-			public void onPreviousImageRequested() {
-				imageView.post(() -> {
-					if (imageUris == null || imageUris.isEmpty())
-						return;
-					if (currentIndex > 0) {
-						imageView.animate().translationX(imageView.getWidth()).setDuration(250).withEndAction(() -> {
-							loadImageAtIndex(currentIndex - 1);
-							imageView.setTranslationX(-imageView.getWidth());
-							imageView.animate().translationX(0).setDuration(250).start();
-						}).start();
+					@Override
+					public void onSlideShowStopped() {
+						showUiElements();
+						isSlideShowRunning = false;
 					}
-				});
-			}
-		}, requireActivity());
+
+					@Override
+					public void onLongPress() {
+						toggleUiVisibility();
+						if (isSlideShowRunning) {
+							stopSlideShow();
+						}
+					}
+
+					@Override
+					public void onPan(float distanceX, float distanceY) {
+						imageView.post(() -> {
+							if (scaleFactor > 1.01f) {
+								imageMatrix.postTranslate(-distanceX, -distanceY);
+								clampMatrix();
+								imageView.setImageMatrix(imageMatrix);
+							}
+						});
+					}
+
+					@Override
+					public void onScale(float scaleDelta, float focusX, float focusY) {
+						imageView.post(() -> {
+							float newScale = scaleFactor * scaleDelta;
+							newScale = Math.max(minTempScale, Math.min(newScale, 30.0f));
+							if (newScale != scaleFactor) {
+								float appliedDelta = newScale / scaleFactor;
+								scaleFactor = newScale;
+								imageMatrix.postScale(appliedDelta, appliedDelta, focusX, focusY);
+								clampMatrix();
+								imageView.setImageMatrix(imageMatrix);
+							}
+						});
+					}
+
+					@Override
+					public void onScaleEnd() {
+						imageView.post(() -> {
+							if (scaleFactor < 1.0f) {
+								animateScaleTo(1.0f);
+							}
+						});
+					}
+
+					@Override
+					public void onRequestClose() {
+						imageView.post(() -> {
+							final float ZOOM_CLOSE_THRESHOLD = 1.02f;
+							boolean currentlyScalingOrPanning = gestureHandler != null
+									&& (gestureHandler.isScaling || gestureHandler.isPanning);
+							boolean zoomedIn = scaleFactor > ZOOM_CLOSE_THRESHOLD;
+
+							if (currentlyScalingOrPanning || zoomedIn) {
+								imageView.animate().translationY(0).setDuration(180).start();
+								return;
+							}
+
+							imageView.animate().translationY(imageView.getHeight()).setDuration(250)
+									.withEndAction(() -> {
+										if (getActivity() != null)
+											getActivity().onBackPressed();
+									}).start();
+						});
+					}
+
+					@Override
+					public void onNextImageRequested() {
+						imageView.post(() -> {
+							if (imageUris == null || imageUris.isEmpty())
+								return;
+							if (currentIndex < imageUris.size() - 1) {
+								imageView.animate().translationX(-imageView.getWidth()).setDuration(300)
+										.withEndAction(() -> {
+											loadImageAtIndex(currentIndex + 1);
+											imageView.setTranslationX(imageView.getWidth());
+											imageView.animate().translationX(0).setDuration(300).start();
+										}).start();
+							}
+						});
+					}
+
+					@Override
+					public void onPreviousImageRequested() {
+						imageView.post(() -> {
+							if (imageUris == null || imageUris.isEmpty())
+								return;
+							if (currentIndex > 0) {
+								imageView.animate().translationX(imageView.getWidth()).setDuration(250)
+										.withEndAction(() -> {
+											loadImageAtIndex(currentIndex - 1);
+											imageView.setTranslationX(-imageView.getWidth());
+											imageView.animate().translationX(0).setDuration(250).start();
+										}).start();
+							}
+						});
+					}
+				}, requireActivity());
 
 		// Setup listeners
 		backButton.setOnClickListener(v -> {
@@ -349,9 +299,6 @@ public class ViewerFragment extends Fragment {
 		deleteButton.setOnClickListener(v -> confirmDeleteImage());
 		infoButton.setOnClickListener(v -> showImageInfo());
 		//rootView.setOnClickListener(v -> toggleUiVisibility());
-
-		// onTouch
-		imageView.setOnTouchListener((v, event) -> gestureAndSlideShow.onTouch(v, event));
 
 		// auto-hide UI onCreate
 		hideUiElements();
@@ -375,6 +322,7 @@ public class ViewerFragment extends Fragment {
 		ViewCompat.requestApplyInsets(root);
 
 		// Hotspot listeners (lowest priority: check hotspotAllowed())
+		// CHANGED: Hotspot listeners now check gesture state from new handler
 		leftHotspot.setOnTouchListener((v, event) -> {
 			if (!hotspotAllowed())
 				return false;
@@ -399,13 +347,13 @@ public class ViewerFragment extends Fragment {
 			return false;
 		});
 
-		// bottom toolbar / menuButton listener (menuButton already bound in onCreateView)
+		// Menu button for slideshow
 		menuButton.setOnClickListener(v -> {
 			PopupMenu menu = new PopupMenu(requireContext(), menuButton);
-			if (!gestureAndSlideShow.isSlideShowActive()) {
+			if (!gestureHandler.isSlideShowActive()) {
 				menu.getMenu().add("Slideshow  »");
 			} else {
-				menu.getMenu().add("Slideshow  Π");
+				menu.getMenu().add("Slideshow  ∎");
 			}
 			menu.setOnMenuItemClickListener(item -> {
 				if (item.getTitle().equals("Slideshow  »")) {
@@ -540,9 +488,9 @@ public class ViewerFragment extends Fragment {
 	}// short memory end
 
 	private boolean hotspotAllowed() {
-		if (gestureAndSlideShow != null) {
-			return !gestureAndSlideShow.isSwiping && !gestureAndSlideShow.isScaling && !gestureAndSlideShow.isPanning
-					&& !gestureAndSlideShow.isDoubleTapping && scaleFactor <= 1.01f;
+		if (gestureHandler != null) {
+			return !gestureHandler.isSwiping && !gestureHandler.isScaling && !gestureHandler.isPanning
+					&& !gestureHandler.isDoubleTapping && scaleFactor <= 1.01f;
 		}
 		return scaleFactor <= 1.01f;
 	}
@@ -659,18 +607,17 @@ public class ViewerFragment extends Fragment {
 		});
 	}
 
+	// CHANGED: Update slideshow methods to use new handler
 	private void startSlideShow(int sec) {
 		isSlideShowRunning = true;
-		hideUiElements(); // force fullscreen
-		long intervalMs = Math.max(500, sec * 1000L); // ensure a sane minimum
-		gestureAndSlideShow.startSlideShow(intervalMs);
+		hideUiElements();
+		long intervalMs = Math.max(500, sec * 1000L);
+		gestureHandler.startSlideShow(intervalMs);
 	}
 
-	//
-	//
 	private void stopSlideShow() {
 		isSlideShowRunning = false;
-		gestureAndSlideShow.stopSlideShow();
+		gestureHandler.stopSlideShow();
 	}
 
 	// main image loader. (need to make a var to hold showing image's id/address for when activity gets reset.)
@@ -1238,7 +1185,11 @@ public class ViewerFragment extends Fragment {
 	@Override
 	public void onResume() {
 		super.onResume();
-		//	showUiElements(); // Show UI when fragment resumes
+
+		// NEW: Register this fragment's gesture handler with MainActivity
+		if (getActivity() instanceof MainActivity) {
+			((MainActivity) getActivity()).setGestureDelegate(gestureHandler);
+		}
 	}
 
 	@Override
@@ -1256,100 +1207,33 @@ public class ViewerFragment extends Fragment {
 	public void onPause() {
 		super.onPause();
 		stopSlideShow();
-		restoreSystemBars();
-		// short memory
+
+		// Save viewer state
 		if (imageUris != null && currentIndex >= 0 && currentIndex < imageUris.size()) {
 			Uri currentUri = imageUris.get(currentIndex);
-			Log.d(TAG, "onPause - saving state for URI: " + currentUri + ", Index: " + currentIndex);
 			saveViewerState(currentUri, currentIndex);
-		} else {
-			Log.d(TAG, "onPause - cannot save state (imageUris null or invalid index)");
-		}
-	}
-
-	/**
-		private void restoreSystemUi() {
-			Window window = requireActivity().getWindow();
-	
-			// 1) Let the system handle insets again
-			WindowCompat.setDecorFitsSystemWindows(window, true);
-	
-			// 2) Reset cutout mode to default (API 28+)
-			if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-				WindowManager.LayoutParams lp = window.getAttributes();
-				lp.layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_DEFAULT;
-				window.setAttributes(lp);
-			}
-	
-			// 3) Show status and navigation bars
-			WindowInsetsControllerCompat insetsController = new WindowInsetsControllerCompat(window, window.getDecorView());
-			insetsController.show(WindowInsetsCompat.Type.statusBars() | WindowInsetsCompat.Type.navigationBars());
-	
-			// 5) Show action bar and bottom nav if you hid them
-			AppCompatActivity activity = (AppCompatActivity) getActivity();
-			if (activity != null && activity.getSupportActionBar() != null) {
-				activity.getSupportActionBar().show();
-			}
-			View bottomNav = requireActivity().findViewById(R.id.bottomNavigation);
-			if (bottomNav != null)
-				bottomNav.setVisibility(View.VISIBLE);
-	
-			// 6) Remove any custom insets listener you set earlier and request a fresh apply
-			View root = requireActivity().findViewById(android.R.id.content);
-			ViewCompat.setOnApplyWindowInsetsListener(root, null);
-			ViewCompat.requestApplyInsets(root);
-		}
-	**/
-
-	private void restoreSystemBars() {
-		Window window = requireActivity().getWindow();
-
-		// 1. Tell the controller to show the bars again
-		WindowInsetsControllerCompat insetsController = new WindowInsetsControllerCompat(window, window.getDecorView());
-
-		// Show both status and navigation bars
-		insetsController.show(WindowInsetsCompat.Type.statusBars() | WindowInsetsCompat.Type.navigationBars());
-
-		// Reset behavior to default (non-transient)
-		insetsController.setSystemBarsBehavior(WindowInsetsControllerCompat.BEHAVIOR_SHOW_BARS_BY_TOUCH);
-
-		// 2. Reset DecorFitsSystemWindows (Optional: set to true if you want the app 
-		// to stop drawing behind the bars and go back to a standard layout)
-		WindowCompat.setDecorFitsSystemWindows(window, true);
-
-		// 3. Fallback: Clear the legacy SystemUiVisibility flags
-		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-			// Clearing flags returns them to the default system state
-			window.getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_VISIBLE);
 		}
 
-		// 4. (Optional) Reset the colors if you don't want them transparent anymore
-		window.setStatusBarColor(ContextCompat.getColor(getContext(), android.R.color.black));
-		window.setNavigationBarColor(Color.BLACK);
+		// NEW: Unregister gesture handler
+		if (getActivity() instanceof MainActivity) {
+			((MainActivity) getActivity()).setGestureDelegate(null);
+		}
+
 	}
 
 	@Override
 	public void onDestroyView() {
 		super.onDestroyView();
-		restoreSystemBars();
-		if (gestureAndSlideShow != null) {
-			gestureAndSlideShow.stopSlideShow();
-			if (gestureAndSlideShow.uiHandler != null && gestureAndSlideShow.hideUiRunnable != null) {
-				gestureAndSlideShow.uiHandler.removeCallbacks(gestureAndSlideShow.hideUiRunnable);
-			}
+
+		// CHANGED: Cleanup new gesture handler
+		if (gestureHandler != null) {
+			gestureHandler.cleanup();
+			gestureHandler = null;
 		}
 
 		// Clear prefs only when the user is actually closing the activity/fragment,
 		// not on configuration changes (rotation) or normal fragment replacement.
-		/**		FragmentActivity act = getActivity();
-				boolean activityFinishing = act != null && act.isFinishing();
-				boolean fragmentBeingRemoved = isRemoving() && (act == null || !act.isChangingConfigurations());
-				boolean parentRemoving = getParentFragment() != null && getParentFragment().isRemoving();
-		
-				if (activityFinishing || fragmentBeingRemoved || parentRemoving) {
-					clearViewerState();
-				}
-		**/
+
 		if (imageView != null) {
 			if (imageView.getDrawable() != null) {
 				imageView.getDrawable().setCallback(null);
@@ -1359,7 +1243,5 @@ public class ViewerFragment extends Fragment {
 			imageView = null;
 		}
 
-		//	restoreSystemUi();
-		//		showUiElements();
 	}
 }
